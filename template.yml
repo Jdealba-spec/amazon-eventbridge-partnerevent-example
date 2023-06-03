@@ -1,0 +1,93 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: MongoDB Atlas-> EventBridge->SQSFIFO->Lambda
+
+Parameters:
+  PartnerEventSource:
+    Description: Mongo Atlas Partner Event Source
+    Type: String
+    Default: 'aws.partner/mongodb.com/stitch.trigger/646fb6f2e46abb66314a967d'
+  
+Globals:
+  Function:
+    Timeout: 3
+
+Resources:
+  SQSFifoQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: SQS-Mongo-DocService-Test.fifo
+      FifoQueue: true
+
+  PermissionForEventsToWriteSQS:
+    Type: AWS::SQS::QueuePolicy
+    Properties:
+      Queues:
+        - !Ref SQSFifoQueue
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: AllowEventBridgeToWriteSQS
+            Effect: Allow
+            Principal:
+              Service: events.amazonaws.com
+            Action: sqs:SendMessage
+            Resource: !GetAtt SQSFifoQueue.Arn
+            Condition:
+              ArnEquals:
+                aws:SourceArn: !GetAtt EvntMongoDocServiceTest.Arn
+
+  LFMongoDocServiceTest:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: eventLambda/
+      Handler: index.handler
+      Runtime: nodejs18.x
+      FunctionName: LF-Mongo-DocService-Test
+      Events:
+        SQSEvent:
+          Type: SQS
+          Properties:
+            Queue: !GetAtt SQSFifoQueue.Arn
+
+  PartnerEventBus: 
+    Type: AWS::Events::EventBus
+    Properties: 
+      EventSourceName: !Ref PartnerEventSource
+      Name: !Ref PartnerEventSource
+
+  EvntMongoDocServiceTest:
+    Type: 'AWS::Events::Rule'
+    Properties:
+      Description: Test Events Rule
+      EventBusName: !Ref PartnerEventSource
+      EventPattern: 
+        account: [!Ref AWS::AccountId]
+      Name: EvntMongoDocServiceTest
+      State: ENABLED
+      Targets:
+        - 
+          Arn: !GetAtt SQSFifoQueue.Arn
+          Id: "idevntmongodocservicetest"
+          SqsParameters:
+            MessageGroupId: "group1"
+         
+  PermissionForEventsToInvokeLambda: 
+    Type: AWS::Lambda::Permission
+    Properties: 
+      FunctionName: 
+        Ref: "LFMongoDocServiceTest"
+      Action: "lambda:InvokeFunction"
+      Principal: "events.amazonaws.com"
+      SourceArn: 
+        Fn::GetAtt: 
+          - "EvntMongoDocServiceTest"
+          - "Arn"
+
+  PermissionForLambdaToReadSQS:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref LFMongoDocServiceTest
+      Action: lambda:InvokeFunction
+      Principal: sqs.amazonaws.com
+      SourceArn: !GetAtt SQSFifoQueue.Arn

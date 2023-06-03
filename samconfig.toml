@@ -1,0 +1,10 @@
+version = 0.1
+[default.deploy.parameters]
+stack_name = "TR-Mongo-DocService-Test"
+resolve_s3 = true
+s3_prefix = "TR-Mongo-DocService-Test"
+region = "us-west-1"
+confirm_changeset = true
+capabilities = "CAPABILITY_IAM"
+parameter_overrides = "PartnerEventSource=\"aws.partner/mongodb.com/stitch.trigger/646fb6f2e46abb66314a967d\""
+image_repositories = []
